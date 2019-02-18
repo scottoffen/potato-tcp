@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://sukona.github.io/potato-tcp/blog</id>
-    <title>Test Site Blog</title>
+    <title>PotatoTcp Blog</title>
     <updated>2017-10-24T06:00:00Z</updated>
     <generator>Feed for Node.js</generator>
     <link rel="alternate" href="https://sukona.github.io/potato-tcp/blog"/>
-    <subtitle>The best place to stay up-to-date with the latest Test Site news and events.</subtitle>
-    <logo>https://sukona.github.io/potato-tcp/img/docusaurus.svg</logo>
+    <subtitle>The best place to stay up-to-date with the latest PotatoTcp news and events.</subtitle>
+    <logo>https://sukona.github.io/potato-tcp/img/potato-tcp.png</logo>
     <rights>Copyright © 2019 Your Name or Your Company Name</rights>
     <entry>
         <title type="html"><![CDATA[New Version 1.0.0]]></title>
