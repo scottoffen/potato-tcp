@@ -1,4 +1,6 @@
-# PotatoTcp
+# PotatoTcp   [![Build status](https://ci.appveyor.com/api/projects/status/iwjkivo2li4tsvn9/branch/master?svg=true)](https://ci.appveyor.com/project/scottoffen/potato-tcp/branch/master)
+
+
 
 ## Introduction
 
