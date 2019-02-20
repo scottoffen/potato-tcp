@@ -18,8 +18,6 @@ namespace PotatoTcp.Client
 {
     public class PotatoClient : IPotatoClient
     {
-        public const int DefaultKeepAliveInterval = 300000; // 5 minutes
-
         public static readonly ILogger<PotatoClient> DefaultLogger = new NullLoggerFactory().CreateLogger<PotatoClient>();
 
         private readonly BlockingCollection<(TaskCompletionSource<object>, Envelope, object)> _outgoingMessages = new BlockingCollection<(TaskCompletionSource<object>, Envelope, object)>();
@@ -33,7 +31,7 @@ namespace PotatoTcp.Client
         protected bool Disposed { get; private set; }
         protected IDictionary<Type, IMessageHandler> Handlers { get; } = new ConcurrentDictionary<Type, IMessageHandler>();
         protected Timer KeepAliveTimer { get; set; }
-        protected TimeSpan KeepAliveTimeSpan { get; set; } = new TimeSpan(0, 0, DefaultKeepAliveInterval);
+        protected TimeSpan KeepAliveTimeSpan { get; set; } = TimeSpan.FromMinutes(5);
         protected readonly Envelope KeepAliveEnvelope = new Envelope
         {
             MessageType = MessageType.Ping,
@@ -41,15 +39,18 @@ namespace PotatoTcp.Client
             Data = new MemoryStream()
         };
 
-        public DateTimeOffset LastCommunicationTime { get; private set; } = new DateTimeOffset(DateTime.UtcNow);
+        public DateTimeOffset LastCommunicationTime { get; private set; } = DateTimeOffset.UtcNow;
 
+        /// <summary>
+        /// The keep alive messaging interval in seconds.
+        /// </summary>
         public int KeepAliveInterval
         {
             get => (int)KeepAliveTimer.Interval / 1000;
             set
             {
-                KeepAliveTimer.Interval = value * 1000;
-                KeepAliveTimeSpan = new TimeSpan(0, 0, (int)value);
+                KeepAliveTimeSpan = TimeSpan.FromSeconds(value);
+                KeepAliveTimer.Interval = KeepAliveTimeSpan.TotalMilliseconds;
             }
         }
 
@@ -66,7 +67,7 @@ namespace PotatoTcp.Client
         public event ClientConnectionEvent OnConnect;
         public event ClientConnectionEvent OnDisconnect;
 
-        public string HostName { get; set; } = "127.0.0.1";
+        public string HostName { get; set; } = IPAddress.Loopback.ToString();
         public Guid Id { get; } = Guid.NewGuid();
         public bool IsConnected => TcpClient != null && TcpClient.Connected;
         public EndPoint RemoteEndPoint => TcpClient?.Client?.RemoteEndPoint;
@@ -103,7 +104,7 @@ namespace PotatoTcp.Client
             MessageSerializer = messageSerializer;
             Logger = logger;
 
-            KeepAliveTimer = new Timer(DefaultKeepAliveInterval) { AutoReset = true };
+            KeepAliveTimer = new Timer(KeepAliveTimeSpan.TotalMilliseconds) { AutoReset = true };
             KeepAliveTimer.Elapsed += KeepAliveEventHandler;
 
             KeepAliveEnvelope.ClientId = Id;
@@ -144,7 +145,7 @@ namespace PotatoTcp.Client
                 if (TcpClient == null) TcpClient = new TcpClient(HostName, Port);
                 if (!TcpClient.Connected) await TcpClient.ConnectAsync(HostName, Port);
 
-                LastCommunicationTime = new DateTimeOffset(DateTime.UtcNow);
+                LastCommunicationTime = DateTimeOffset.UtcNow;
                 if (EnableKeepAlive) KeepAliveTimer.Enabled = true;
 
                 Starting = false;
@@ -268,7 +269,7 @@ namespace PotatoTcp.Client
 
         private void HandleMessage(Stream stream)
         {
-            LastCommunicationTime = new DateTimeOffset(DateTime.UtcNow);
+            LastCommunicationTime = DateTimeOffset.UtcNow;
 
             try
             {
@@ -312,11 +313,11 @@ namespace PotatoTcp.Client
             }
         }
 
-        private void KeepAliveEventHandler(Object source, System.Timers.ElapsedEventArgs e)
+        private void KeepAliveEventHandler(object source, System.Timers.ElapsedEventArgs e)
         {
             var now = new DateTimeOffset(e.SignalTime.AddMilliseconds(e.SignalTime.Millisecond * -1));
 
-            if ((LastCommunicationTime + KeepAliveTimeSpan) > new DateTimeOffset(DateTime.UtcNow)) return;
+            if ((LastCommunicationTime + KeepAliveTimeSpan) > DateTimeOffset.UtcNow) return;
 
             if (Disposed || !IsConnected)
             {
@@ -344,7 +345,7 @@ namespace PotatoTcp.Client
                 {
                     MessageSerializer.Serialize(envelope.Data, obj);
                     EnvelopeSerializer.Serialize(TcpClient.GetStream(), envelope);
-                    LastCommunicationTime = new DateTimeOffset(DateTime.UtcNow);
+                    LastCommunicationTime = DateTimeOffset.UtcNow;
                 }
             }
             catch (InvalidOperationException ioe) when (Stopping)
