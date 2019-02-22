@@ -20,16 +20,6 @@ namespace PotatoTcp.Server
         /// <summary>
         /// 
         /// </summary>
-        IEnvelopeSerializer EnvelopeSerializer { get; }
-
-        /// <summary>
-        /// 
-        /// </summary>
-        IMessageSerializer MessageSerializer { get; }
-
-        /// <summary>
-        /// 
-        /// </summary>
         IPEndPoint IpEndpoint { get; set; }
 
         /// <summary>
@@ -56,8 +46,25 @@ namespace PotatoTcp.Server
         /// 
         /// </summary>
         /// <typeparam name="T"></typeparam>
+        /// <param name="handler"></param>
+        void AddHandler<T>(Action<Guid, T> handler) where T : class;
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+
+        void Disconnect(Guid id);
+
+        void Disconnect();
+
+        void RemoveHandler<T>();
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
         /// <param name="message"></param>
-        void Send<T>(T message);
+        void Send<T>(T message) where T : class;
 
         /// <summary>
         /// 
@@ -65,7 +72,7 @@ namespace PotatoTcp.Server
         /// <typeparam name="T"></typeparam>
         /// <param name="message"></param>
         /// <returns></returns>
-        Task SendAsync<T>(T message);
+        Task SendAsync<T>(T message) where T : class;
 
         /// <summary>
         /// 
@@ -73,7 +80,7 @@ namespace PotatoTcp.Server
         /// <typeparam name="T"></typeparam>
         /// <param name="clientId"></param>
         /// <param name="message"></param>
-        void Send<T>(Guid clientId, T message);
+        void Send<T>(Guid clientId, T message) where T : class;
 
         /// <summary>
         /// 
@@ -82,7 +89,7 @@ namespace PotatoTcp.Server
         /// <param name="clientId"></param>
         /// <param name="message"></param>
         /// <returns></returns>
-        Task SendAsync<T>(Guid clientId, T message);
+        Task SendAsync<T>(Guid clientId, T message) where T : class;
 
         /// <summary>
         /// 
@@ -101,18 +108,14 @@ namespace PotatoTcp.Server
         /// 
         /// </summary>
         void Stop();
+    }
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="handler"></param>
-        void AddHandler<T>(Action<Guid, T> handler) where T : class;
-
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        void RemoveHandler<T>();
+    public static class IPotatoServerExtensions
+    {
+        public static void StopAndDisconnect(this IPotatoServer server)
+        {
+            server.Stop();
+            server.Disconnect();
+        }
     }
 }

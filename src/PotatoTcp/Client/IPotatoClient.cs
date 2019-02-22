@@ -18,11 +18,6 @@ namespace PotatoTcp.Client
         bool EnableKeepAlive { get; set; }
 
         /// <summary>
-        /// The serializer used to serialze and deserialize an <see cref=" Enveleope"/>.
-        /// </summary>
-        IEnvelopeSerializer EnvelopeSerializer { get; }
-
-        /// <summary>
         /// Gets or sets a value indicating the host name to connect the client to.
         /// </summary>
         string HostName { get; set; }
@@ -53,11 +48,6 @@ namespace PotatoTcp.Client
         ILogger<PotatoClient> Logger { get; }
 
         /// <summary>
-        /// The serializer used to serialze and deserialize the message in <see cref=" Enveleope.Data"/>.
-        /// </summary>
-        IMessageSerializer MessageSerializer { get; }
-
-        /// <summary>
         /// Occurs when the client establishes a connection with the remote host.
         /// </summary>
         event ClientConnectionEvent OnConnect;
@@ -76,6 +66,11 @@ namespace PotatoTcp.Client
         /// Gets the remote endpoint.
         /// </summary>
         EndPoint RemoteEndPoint { get; }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        IWireProtocol WireProtocol { get; }
 
         /// <summary>
         /// 
@@ -99,7 +94,6 @@ namespace PotatoTcp.Client
         /// <summary>
         /// 
         /// </summary>
-        /// <param name="token"></param>
         /// <returns></returns>
         Task ConnectAsync(CancellationToken token);
 
@@ -132,7 +126,7 @@ namespace PotatoTcp.Client
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <param name="obj"></param>
-        void Send<T>(T obj);
+        void Send<T>(T obj) where T : class;
 
         /// <summary>
         /// 
@@ -140,6 +134,21 @@ namespace PotatoTcp.Client
         /// <typeparam name="T"></typeparam>
         /// <param name="obj"></param>
         /// <returns></returns>
-        Task SendAsync<T>(T obj);
+        Task SendAsync<T>(T obj) where T : class;
+    }
+
+    public static class IPotatoClientExtensions
+    {
+        public static async Task ConnectAndListenAsync(this IPotatoClient client)
+        {
+            await client.ConnectAndListenAsync(CancellationToken.None);
+        }
+
+        public static async Task ConnectAndListenAsync(this IPotatoClient client, CancellationToken token)
+        {
+            await client.ConnectAsync(token);
+            await client.ListenAsync(token);
+        }
+
     }
 }

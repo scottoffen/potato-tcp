@@ -9,7 +9,7 @@ namespace Samples.Objects
     {
         private static readonly string largeText = File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LargeDataFile.txt"));
 
-        public string Payload { get; set; } = string.Concat(Enumerable.Repeat(largeText, 5));
+        public string Payload { get; set; } = string.Concat(Enumerable.Repeat(largeText, 1));
 
         public override string ToString()
         {
