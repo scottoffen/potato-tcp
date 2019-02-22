@@ -38,7 +38,7 @@ namespace PotatoTcp.Client
         bool IsConnected { get; }
 
         /// <summary>
-        /// The number of seconds of idle time between sending keepalive packets to the remote host.
+        /// The keep alive messaging interval in seconds.
         /// </summary>
         int KeepAliveInterval { get; set; }
 

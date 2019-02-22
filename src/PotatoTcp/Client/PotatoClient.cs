@@ -41,9 +41,6 @@ namespace PotatoTcp.Client
 
         public DateTimeOffset LastCommunicationTime { get; private set; } = DateTimeOffset.UtcNow;
 
-        /// <summary>
-        /// The keep alive messaging interval in seconds.
-        /// </summary>
         public int KeepAliveInterval
         {
             get => (int)KeepAliveTimer.Interval / 1000;
@@ -70,8 +67,8 @@ namespace PotatoTcp.Client
         public string HostName { get; set; } = IPAddress.Loopback.ToString();
         public Guid Id { get; } = Guid.NewGuid();
         public bool IsConnected => TcpClient != null && TcpClient.Connected;
-        public EndPoint RemoteEndPoint => TcpClient?.Client?.RemoteEndPoint;
-        public EndPoint LocalEndPoint => TcpClient?.Client?.LocalEndPoint;
+        public EndPoint RemoteEndPoint => TcpClient?.Client?.RemoteEndPoint ?? null;
+        public EndPoint LocalEndPoint => TcpClient?.Client?.LocalEndPoint ?? null;
 
         public int Port { get; set; } = 23000;
 
@@ -289,7 +286,7 @@ namespace PotatoTcp.Client
                 }
                 else
                 {
-                    Logger.LogDebug($"No handler found for message of type: {msgType?.FullName}");
+                    Logger.LogDebug($"No handler found for message of type: {msgType?.FullName ?? "unknown type"}");
                 }
             }
             catch (SerializationException) when (!RemoteConnectionEstablished())
