@@ -24,6 +24,7 @@ namespace Samples.Server
             {
                 Console.WriteLine();
                 Console.WriteLine("Enter <x> to exit the utility at any time.");
+                Console.WriteLine("Enter <l> to send a King Lear to the server.");
                 Console.WriteLine("Enter <s> to send a person object to all clients.");
 
                 var breaker = true;
@@ -34,6 +35,10 @@ namespace Samples.Server
                         var input = Console.ReadLine().Trim().ToLower().Substring(0, 1);
                         switch (input)
                         {
+                            case "l":
+                                Console.WriteLine($"Sending: King Lear");
+                                server.Send(new LargeDataObject());
+                                break;
                             case "s":
                                 var person = Person.Create();
                                 Console.WriteLine($"Sending: {person}");
@@ -71,6 +76,7 @@ namespace Samples.Server
             server.OnClientConnect += (c) => Console.WriteLine($"Connection established with {c.RemoteEndPoint}");
 
             server.AddHandler<Person>(Person.Handler);
+            server.AddHandler<LargeDataObject>(LargeDataObject.Handler);
 
             server.StartAsync();
             Console.WriteLine("done");

@@ -23,6 +23,7 @@ namespace Samples.Client
             {
                 Console.WriteLine();
                 Console.WriteLine("Enter <x> to exit the utility at any time.");
+                Console.WriteLine("Enter <l> to send a King Lear to the server.");
                 Console.WriteLine("Enter <s> to send a person object to the server.");
 
                 var breaker = true;
@@ -33,6 +34,10 @@ namespace Samples.Client
                         var input = Console.ReadLine().Trim().ToLower().Substring(0, 1);
                         switch (input)
                         {
+                            case "l":
+                                Console.WriteLine($"Sending: King Lear");
+                                client.Send(new LargeDataObject());
+                                break;
                             case "s":
                                 var person = Person.Create();
                                 Console.WriteLine($"Sending: {person}");
@@ -80,6 +85,7 @@ namespace Samples.Client
 
             // Add handlers for expected objects
             client.AddHandler<Person>(Person.Handler);
+            client.AddHandler<LargeDataObject>(LargeDataObject.Handler);
 
             // Connect
             client.ConnectAsync().Wait();
