@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NLog.Extensions.Logging;
+using PotatoTcp.Client;
 using PotatoTcp.Server;
 using Samples.Objects;
 
@@ -66,7 +67,8 @@ namespace Samples.Server
 
             server.OnStart += (s) => s.Logger.LogInformation("Server OnStart event handler fired.");
             server.OnStop += (s) => s.Logger.LogInformation("Server OnStop event handler fired.");
-            server.OnClientConnect += (client) => client.Logger.LogInformation($"Connection established with {client.RemoteEndPoint}");
+            server.OnClientConnect += (c) => c.Logger.LogInformation($"Connection established with {c.RemoteEndPoint}");
+            server.OnClientConnect += (c) => Console.WriteLine($"Connection established with {c.RemoteEndPoint}");
 
             server.AddHandler<Person>(Person.Handler);
 
@@ -89,6 +91,8 @@ namespace Samples.Server
                         CaptureMessageProperties = true
                     });
                 })
+                // Injecting this allows for a logger to be injected into generated clients
+                .AddScoped<IPotatoClientFactory, PotatoClientFactory>()
                 .AddScoped<IPotatoServer, PotatoServer>()
                 .BuildServiceProvider();
         }

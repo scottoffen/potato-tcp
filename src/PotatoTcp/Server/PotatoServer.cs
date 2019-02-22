@@ -122,7 +122,7 @@ namespace PotatoTcp.Server
 
                 OnStart?.Invoke(this);
 
-                while (true)
+                while (!Stopping)
                 {
                     var client = ClientFactory.Create(await TcpListener.AcceptTcpClientAsync());
                     Clients.Add(client.Id, client);
@@ -145,13 +145,13 @@ namespace PotatoTcp.Server
                     Use the ErrorCode property to obtain the specific error code, then refer to:
                     https://docs.microsoft.com/en-us/windows/desktop/winsock/windows-sockets-error-codes-2
                  */
-                Logger.LogInformation(se, $"Ignoring exception because listener is in shutdown mode.");
+                Logger.LogTrace(se, $"Ignoring exception because listener is in shutdown mode.");
             }
             catch (ObjectDisposedException ode) when (Stopping)
             {
-                Logger.LogInformation(ode, $"Ignoring exception because listener is in shutdown mode.");
+                Logger.LogTrace(ode, $"Ignoring exception because listener is in shutdown mode.");
             }
-            catch (ArgumentNullException)
+            catch (ArgumentNullException) when (Starting)
             {
                 throw;
             }

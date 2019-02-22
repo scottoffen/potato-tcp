@@ -311,7 +311,7 @@ namespace Samples.Objects
                 "Gonzales",
                 "Bryant ",
                 "Alexander",
-                "ussell",
+                "Russell",
                 "Griffin ",
                 "Diaz",
                 "Hayes"

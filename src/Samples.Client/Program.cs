@@ -62,18 +62,28 @@ namespace Samples.Client
         private static IPotatoClient Configure()
         {
             Console.Write("Starting client...");
+
+            // Using the container allows for the logger to be injected
             var client = container.GetRequiredService<IPotatoClient>();
+
+            // Enable KeepAlive
+            client.EnableKeepAlive = true;
+            client.KeepAliveInterval = 60;
 
             // Change where the client connects to here:
             // client.HostName = "127.0.0.1";
             // client.Port = 23000;
 
+            // Hooking into events
             client.OnConnect += (c) => c.Logger.LogInformation($"Connection established with {c.RemoteEndPoint}");
             client.OnDisconnect += (c) => client.Logger.LogInformation($"Disconnected from server");
 
+            // Add handlers for expected objects
             client.AddHandler<Person>(Person.Handler);
 
+            // Connect
             client.ConnectAsync().Wait();
+
             Console.WriteLine("done");
             Console.WriteLine($"Client connected to {client.RemoteEndPoint}");
 
