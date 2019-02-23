@@ -160,6 +160,11 @@ namespace PotatoTcp.Server
             {
                 Logger.LogTrace(se, $"Ignoring exception because listener is in shutdown mode.");
             }
+            catch (SocketException se)
+            {
+                Logger.LogTrace(se, $"SocketException.ErrorCode: {se.ErrorCode}");
+                throw;
+            }
             catch (ObjectDisposedException ode) when (Stopping || TcpListener == null)
             {
                 Logger.LogTrace(ode, $"Ignoring exception because listener is in shutdown mode.");

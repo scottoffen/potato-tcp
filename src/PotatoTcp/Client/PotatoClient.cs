@@ -171,6 +171,13 @@ namespace PotatoTcp.Client
             Stopping = true;
 
             KeepAliveTimer.Enabled = false;
+
+            try
+            {
+                TcpClient.GetStream().Close();
+            }
+            catch { }
+
             TcpClient.Close();
 
             Stopping = false;
@@ -281,10 +288,14 @@ namespace PotatoTcp.Client
                     Logger.LogDebug($"No handler found for message of type: {message.GetType().FullName ?? "unknown type"}");
                 }
             }
-            catch (SerializationException) when (!RemoteConnectionEstablished())
+            catch (SerializationException) when (!IsConnected || !stream.CanRead || !RemoteConnectionEstablished())
             {
                 if (IsConnected) Disconnect();
             }
+            // catch (SerializationException se)
+            // {
+            //     Console.WriteLine($"SerializationException: {se.Message}");
+            // }
             catch (IOException ioe) when (!IsConnected || Stopping)
             {
                 Logger.LogTrace(ioe, $"Ignoring exception because client {Id} has disconnected.");
