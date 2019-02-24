@@ -45,17 +45,17 @@ namespace PotatoTcp.Server
         public event ServerListeningEvent OnStart;
         public event ServerListeningEvent OnStop;
 
-        public PotatoServer() : this(new PotatoClientFactory(), DefaultLogger) { }
+        public PotatoServer() : this(null, new PotatoClientFactory(), DefaultLogger) { }
 
-        public PotatoServer(IWireProtocol wireProtocol) : this(new PotatoClientFactory(wireProtocol), DefaultLogger) { }
+        public PotatoServer(IWireProtocol wireProtocol) : this(wireProtocol, new PotatoClientFactory(wireProtocol), DefaultLogger) { }
 
-        public PotatoServer(IPotatoClientFactory factory) : this(factory, DefaultLogger) { }
+        public PotatoServer(IPotatoClientFactory factory) : this(null, factory, DefaultLogger) { }
 
-        public PotatoServer(ILogger<PotatoServer> logger) : this(new PotatoClientFactory(), logger) { }
+        public PotatoServer(ILogger<PotatoServer> logger) : this(null, new PotatoClientFactory(), logger) { }
 
-        public PotatoServer(IWireProtocol wireProtocol, ILogger<PotatoServer> logger) : this(new PotatoClientFactory(wireProtocol), logger) { }
+        public PotatoServer(IWireProtocol wireProtocol, ILogger<PotatoServer> logger) : this(wireProtocol, new PotatoClientFactory(wireProtocol), logger) { }
 
-        public PotatoServer(IPotatoClientFactory factory, ILogger<PotatoServer> logger)
+        public PotatoServer(IWireProtocol protocol, IPotatoClientFactory factory, ILogger<PotatoServer> logger)
         {
             ClientFactory = factory;
             Logger = logger;
