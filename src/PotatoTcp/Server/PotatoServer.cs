@@ -96,6 +96,7 @@ namespace PotatoTcp.Server
             Stop();
             Disconnect();
             Disposed = true;
+            GC.SuppressFinalize(this);
         }
 
         public virtual void RemoveHandler<T>()

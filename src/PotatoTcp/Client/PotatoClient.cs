@@ -190,6 +190,7 @@ namespace PotatoTcp.Client
             Disposed = true;
             _outgoingMessages.Dispose();
             Disconnect();
+            GC.SuppressFinalize(this);
         }
 
         public virtual async Task ListenAsync()
