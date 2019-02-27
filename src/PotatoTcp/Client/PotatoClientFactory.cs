@@ -7,34 +7,23 @@ namespace PotatoTcp.Client
 {
     public class PotatoClientFactory : IPotatoClientFactory
     {
-        public static readonly ILogger<PotatoClient> DefaultLogger = new NullLoggerFactory().CreateLogger<PotatoClient>();
+        public ILogger<PotatoClient> Logger { get; protected set; }
 
-        protected IEnvelopeSerializer EnvelopeSerializer;
-        protected IMessageSerializer MessageSerializer;
-        protected ILogger<PotatoClient> Logger;
+        public IWireProtocol WireProtocol { get; protected set; }
 
-        public PotatoClientFactory() : this(DefaultLogger) { }
+        public PotatoClientFactory() : this(new BinaryFormatterWireProtocol(), PotatoClient.DefaultLogger) { }
 
-        public PotatoClientFactory(ILogger<PotatoClient> logger) : this(new BinaryEnvelopeSerializer(), new BinaryMessageSerializer(), logger) { }
+        public PotatoClientFactory(IWireProtocol wireProtocol) : this(wireProtocol, PotatoClient.DefaultLogger) { }
 
-        public PotatoClientFactory(IEnvelopeSerializer envelopeSerializer) : this(envelopeSerializer, new BinaryMessageSerializer(), DefaultLogger) { }
+        public PotatoClientFactory(ILogger<PotatoClient> logger) : this(new BinaryFormatterWireProtocol(), logger) { }
 
-        public PotatoClientFactory(IMessageSerializer messageSerializer) : this(new BinaryEnvelopeSerializer(), messageSerializer, DefaultLogger) { }
-
-        public PotatoClientFactory(IEnvelopeSerializer envelopeSerializer, ILogger<PotatoClient> logger) : this(envelopeSerializer, new BinaryMessageSerializer(), logger) { }
-
-        public PotatoClientFactory(IMessageSerializer messageSerializer, ILogger<PotatoClient> logger) : this(new BinaryEnvelopeSerializer(), messageSerializer, logger) { }
-
-        public PotatoClientFactory(IEnvelopeSerializer envelopeSerializer, IMessageSerializer messageSerializer) : this(envelopeSerializer, messageSerializer, DefaultLogger) { }
-
-        public PotatoClientFactory(IEnvelopeSerializer envelopeSerializer, IMessageSerializer messageSerializer, ILogger<PotatoClient> logger)
+        public PotatoClientFactory(IWireProtocol wireProtocol, ILogger<PotatoClient> logger)
         {
-            EnvelopeSerializer = envelopeSerializer;
-            MessageSerializer = messageSerializer;
+            WireProtocol = wireProtocol;
             Logger = logger;
         }
 
         public IPotatoClient Create(TcpClient client)
-            => new PotatoClient(EnvelopeSerializer, MessageSerializer, Logger, client);
+            => new PotatoClient(WireProtocol, Logger, client);
     }
 }

@@ -70,14 +70,21 @@ namespace Samples.Server
             Console.Write("Starting server...");
             var server = container.GetRequiredService<IPotatoServer>();
 
+            // Register Event Handlers (optional)
             server.OnStart += (s) => s.Logger.LogInformation("Server OnStart event handler fired.");
             server.OnStop += (s) => s.Logger.LogInformation("Server OnStop event handler fired.");
             server.OnClientConnect += (c) => c.Logger.LogInformation($"Connection established with {c.RemoteEndPoint}");
             server.OnClientConnect += (c) => Console.WriteLine($"Connection established with {c.RemoteEndPoint}");
 
+            // Register Message Handlers
             server.AddHandler<Person>(Person.Handler);
             server.AddHandler<LargeDataObject>(LargeDataObject.Handler);
 
+            // You can configure the keep alive to send whatever you want,
+            // but you will need to create and register your own handler for it.
+            server.AddHandler<KeepAlive>(KeepAliveHandler);
+
+            // Start Listening
             server.StartAsync();
             Console.WriteLine("done");
             Console.WriteLine($"Server listening on {server.IpEndpoint.Address}:{server.IpEndpoint.Port}");
@@ -102,5 +109,10 @@ namespace Samples.Server
                 .AddScoped<IPotatoServer, PotatoServer>()
                 .BuildServiceProvider();
         }
+
+        private static Action<Guid, KeepAlive> KeepAliveHandler = (Guid guid, KeepAlive obj) =>
+        {
+            Console.WriteLine($"Received: {obj.Message} from {guid}");
+        };
     }
 }

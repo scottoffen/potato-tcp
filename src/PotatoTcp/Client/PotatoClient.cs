@@ -20,26 +20,44 @@ namespace PotatoTcp.Client
     {
         public static readonly ILogger<PotatoClient> DefaultLogger = new NullLoggerFactory().CreateLogger<PotatoClient>();
 
-        private readonly BlockingCollection<(TaskCompletionSource<object>, Envelope, object)> _outgoingMessages = new BlockingCollection<(TaskCompletionSource<object>, Envelope, object)>();
-        private bool enableKeepAlive = false;
+        public object KeepAliveMessage { get; set; }
+
+        private bool _enableKeepAlive;
+        private readonly BlockingCollection<(TaskCompletionSource<object>, object)> _outgoingMessages = new BlockingCollection<(TaskCompletionSource<object>, object)>();
 
         protected readonly object SendLock = new object();
-        protected bool Starting { get; set; }
-        protected bool Stopping { get; set; }
-        public ILogger<PotatoClient> Logger { get; protected set; }
-        protected TcpClient TcpClient;
-        protected bool Disposed { get; private set; }
-        protected IDictionary<Type, IMessageHandler> Handlers { get; } = new ConcurrentDictionary<Type, IMessageHandler>();
-        protected Timer KeepAliveTimer { get; set; }
-        protected TimeSpan KeepAliveTimeSpan { get; set; } = TimeSpan.FromMinutes(5);
-        protected readonly Envelope KeepAliveEnvelope = new Envelope
-        {
-            MessageType = MessageType.Ping,
-            DataType = typeof(Object).AssemblyQualifiedName,
-            Data = new MemoryStream()
-        };
 
-        public DateTimeOffset LastCommunicationTime { get; private set; } = DateTimeOffset.UtcNow;
+        protected TcpClient TcpClient { get; set; }
+
+        public IDictionary<Type, IMessageHandler> Handlers { get; } = new ConcurrentDictionary<Type, IMessageHandler>();
+
+        public bool Disposed { get; private set; }
+
+        public TimeSpan KeepAliveTimeSpan { get; protected set; } = TimeSpan.FromMinutes(5);
+
+        public Timer KeepAliveTimer { get; protected set; }
+
+        public DateTimeOffset LastCommunicationTime { get; protected set; } = DateTimeOffset.UtcNow;
+
+        public bool Starting { get; protected set; }
+
+        public bool Stopping { get; protected set; }
+
+        public bool EnableKeepAlive
+        {
+            get => _enableKeepAlive;
+            set
+            {
+                _enableKeepAlive = value;
+                if (IsConnected) KeepAliveTimer.Enabled = value;
+            }
+        }
+
+        public string HostName { get; set; } = IPAddress.Loopback.ToString();
+
+        public Guid Id { get; } = Guid.NewGuid();
+
+        public bool IsConnected => TcpClient?.Connected ?? false;
 
         public int KeepAliveInterval
         {
@@ -51,65 +69,45 @@ namespace PotatoTcp.Client
             }
         }
 
-        public bool EnableKeepAlive
-        {
-            get => enableKeepAlive;
-            set
-            {
-                enableKeepAlive = value;
-                if (IsConnected) KeepAliveTimer.Enabled = value;
-            }
-        }
+        public EndPoint LocalEndPoint => TcpClient?.Client?.LocalEndPoint ?? null;
+
+        public ILogger<PotatoClient> Logger { get; protected set; }
+
+        public int Port { get; set; } = 23000;
+
+        public EndPoint RemoteEndPoint => TcpClient?.Client?.RemoteEndPoint ?? null;
+
+        public IWireProtocol WireProtocol { get; protected set; }
 
         public event ClientConnectionEvent OnConnect;
         public event ClientConnectionEvent OnDisconnect;
 
-        public string HostName { get; set; } = IPAddress.Loopback.ToString();
-        public Guid Id { get; } = Guid.NewGuid();
-        public bool IsConnected => TcpClient != null && TcpClient.Connected;
-        public EndPoint RemoteEndPoint => TcpClient?.Client?.RemoteEndPoint ?? null;
-        public EndPoint LocalEndPoint => TcpClient?.Client?.LocalEndPoint ?? null;
+        public PotatoClient() : this(new BinaryFormatterWireProtocol(), DefaultLogger) { }
 
-        public int Port { get; set; } = 23000;
+        public PotatoClient(IWireProtocol protocol) : this(protocol, DefaultLogger) { }
 
-        public IEnvelopeSerializer EnvelopeSerializer { get; protected set; }
+        public PotatoClient(ILogger<PotatoClient> logger) : this(new BinaryFormatterWireProtocol(), logger) { }
 
-        public IMessageSerializer MessageSerializer { get; protected set; }
-
-        public PotatoClient() : this(new BinaryEnvelopeSerializer(), new BinaryMessageSerializer(), DefaultLogger) { }
-
-        public PotatoClient(ILogger<PotatoClient> logger) : this(new BinaryEnvelopeSerializer(), new BinaryMessageSerializer(), logger) { }
-
-        public PotatoClient(IEnvelopeSerializer envelopeSerializer) : this(envelopeSerializer, new BinaryMessageSerializer(), DefaultLogger) { }
-
-        public PotatoClient(IMessageSerializer messageSerializer) : this(new BinaryEnvelopeSerializer(), messageSerializer, DefaultLogger) { }
-
-        public PotatoClient(IEnvelopeSerializer envelopeSerializer, ILogger<PotatoClient> logger) : this(envelopeSerializer, new BinaryMessageSerializer(), logger) { }
-
-        public PotatoClient(IMessageSerializer messageSerializer, ILogger<PotatoClient> logger) : this(new BinaryEnvelopeSerializer(), messageSerializer, logger) { }
-
-        public PotatoClient(IEnvelopeSerializer envelopeSerializer, IMessageSerializer messageSerializer) : this(envelopeSerializer, messageSerializer, DefaultLogger) { }
-
-        protected internal PotatoClient(IEnvelopeSerializer envelopeSerializer, IMessageSerializer messageSerializer, ILogger<PotatoClient> logger, TcpClient client) : this(envelopeSerializer, messageSerializer, logger)
+        protected internal PotatoClient(IWireProtocol protocol, ILogger<PotatoClient> logger, TcpClient client) : this(protocol, logger)
         {
             TcpClient = client;
+            HostName = null;
+            Port = 0;
         }
 
-        public PotatoClient(IEnvelopeSerializer envelopeSerializer, IMessageSerializer messageSerializer, ILogger<PotatoClient> logger)
+        public PotatoClient(IWireProtocol protocol, ILogger<PotatoClient> logger)
         {
-            EnvelopeSerializer = envelopeSerializer;
-            MessageSerializer = messageSerializer;
+            WireProtocol = protocol;
             Logger = logger;
 
             KeepAliveTimer = new Timer(KeepAliveTimeSpan.TotalMilliseconds) { AutoReset = true };
             KeepAliveTimer.Elapsed += KeepAliveEventHandler;
+            KeepAliveMessage = new KeepAlive { Id = Id };
 
-            KeepAliveEnvelope.ClientId = Id;
-
-            Logger.LogTrace("PotatoTcp Client initialized.");
+            Logger.LogTrace("PotatoTcp Client initialized");
         }
 
-        public void AddHandler<T>(Action<Guid, T> handler)
+        public virtual void AddHandler<T>(Action<Guid, T> handler)
         {
             var handlerType = typeof(T);
             Handlers.Add(handlerType, new MessageHandler<T>
@@ -119,7 +117,7 @@ namespace PotatoTcp.Client
             });
         }
 
-        public void AddHandler(IMessageHandler handler)
+        public virtual void AddHandler(IMessageHandler handler)
         {
             Handlers.Add(
                 handler.HandlerType,
@@ -139,17 +137,18 @@ namespace PotatoTcp.Client
             try
             {
                 Starting = true;
+
                 if (TcpClient == null) TcpClient = new TcpClient(HostName, Port);
                 if (!TcpClient.Connected) await TcpClient.ConnectAsync(HostName, Port);
 
                 LastCommunicationTime = DateTimeOffset.UtcNow;
                 if (EnableKeepAlive) KeepAliveTimer.Enabled = true;
 
+                StartAsyncSendProcessor(token);
+
                 Starting = false;
 
                 OnConnect?.Invoke(this);
-
-                ListenAsync(token);
             }
             catch (ObjectDisposedException ode) when (Stopping)
             {
@@ -169,21 +168,29 @@ namespace PotatoTcp.Client
         public virtual void Disconnect()
         {
             if (TcpClient == null || Stopping) return;
+            Stopping = true;
 
             KeepAliveTimer.Enabled = false;
 
-            Stopping = true;
-            TcpClient.Close();
-            Stopping = false;
+            try
+            {
+                TcpClient.GetStream().Close();
+            }
+            catch { }
 
+            TcpClient.Close();
+
+            Stopping = false;
             OnDisconnect?.Invoke(this);
         }
 
         public void Dispose()
         {
+            if (Disposed) return;
             Disposed = true;
             _outgoingMessages.Dispose();
             Disconnect();
+            GC.SuppressFinalize(this);
         }
 
         public virtual async Task ListenAsync()
@@ -199,8 +206,6 @@ namespace PotatoTcp.Client
                 throw new InvalidOperationException("Cannot listen while client is not connected!");
 
             await Task.Yield();
-
-            StartAsyncSendProcessor(token);
 
             try
             {
@@ -219,43 +224,6 @@ namespace PotatoTcp.Client
             }
         }
 
-        public void RemoveHandler<T>()
-        {
-            Handlers.Remove(typeof(T));
-        }
-
-        public virtual void Send<T>(T obj)
-        {
-            if (Disposed) throw new ObjectDisposedException("Can't call Send<T> on a disposed object.");
-            if (!IsConnected) throw new NotConnectedException("The connection has been terminated");
-
-            var envelope = new Envelope
-            {
-                MessageType = MessageType.Content,
-                DataType = typeof(T).AssemblyQualifiedName,
-                Data = new MemoryStream()
-            };
-
-            SendEnvelope(envelope, obj);
-        }
-
-        public virtual Task SendAsync<T>(T obj)
-        {
-            if (Disposed) throw new ObjectDisposedException("Can't call Send<T> on a disposed object.");
-            if (!IsConnected) throw new NotConnectedException("The connection has been terminated");
-
-            var envelope = new Envelope
-            {
-                MessageType = MessageType.Content,
-                DataType = typeof(T).AssemblyQualifiedName,
-                Data = new MemoryStream()
-            };
-
-            var source = new TaskCompletionSource<object>();
-            _outgoingMessages.Add((source, envelope, obj));
-            return source.Task;
-        }
-
         public bool RemoteConnectionEstablished()
         {
             var info = IPGlobalProperties.GetIPGlobalProperties()
@@ -264,84 +232,21 @@ namespace PotatoTcp.Client
             return info != null && info.State == TcpState.Established;
         }
 
-        private void HandleMessage(Stream stream)
+        public virtual void RemoveHandler<T>()
         {
-            LastCommunicationTime = DateTimeOffset.UtcNow;
-
-            try
-            {
-                var envelope = EnvelopeSerializer.Deserialize(stream);
-                if (envelope.MessageType == MessageType.Ping)
-                {
-                    Logger.LogDebug($"Ping received from {TcpClient.Client.RemoteEndPoint} on {TcpClient.Client.LocalEndPoint}");
-                    return;
-                }
-
-                var msgType = Type.GetType(envelope.DataType);
-
-                if (Handlers.TryGetValue(msgType, out IMessageHandler handler))
-                {
-                    Logger.LogDebug($"Invoking handler for message of type: {msgType.FullName}");
-                    handler.Invoke(MessageSerializer.Deserialize(msgType, envelope.Data));
-                }
-                else
-                {
-                    Logger.LogDebug($"No handler found for message of type: {msgType?.FullName ?? "unknown type"}");
-                }
-            }
-            catch (SerializationException) when (!RemoteConnectionEstablished())
-            {
-                if (IsConnected) Disconnect();
-            }
-            catch (IOException ioe) when (!IsConnected)
-            {
-                Logger.LogTrace(ioe, $"Ignoring exception because client {Id} has disconnected.");
-            }
-            catch (Exception e)
-            {
-                /*
-                  An exception was thrown by either:
-                  - envelope deserializer
-                  - type deserializer
-                  - message deserializer
-                  - invoked handler
-                 */
-                Logger.LogError(e, e.Message);
-            }
+            Handlers.Remove(typeof(T));
         }
 
-        private void KeepAliveEventHandler(object source, System.Timers.ElapsedEventArgs e)
+        public virtual void Send<T>(T obj) where T : class
         {
-            var now = new DateTimeOffset(e.SignalTime.AddMilliseconds(e.SignalTime.Millisecond * -1));
+            if (Disposed) throw new ObjectDisposedException("Can't call Send<T> on a disposed object.");
+            if (!IsConnected) throw new NotConnectedException("The connection has been terminated");
 
-            if ((LastCommunicationTime + KeepAliveTimeSpan) > DateTimeOffset.UtcNow) return;
-
-            if (Disposed || !IsConnected)
-            {
-                KeepAliveTimer.Enabled = false;
-                return;
-            }
-
-            try
-            {
-                SendEnvelope(KeepAliveEnvelope, new object());
-                LastCommunicationTime = now;
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError("Failure while sending ping message", ex);
-                Disconnect();
-            }
-        }
-
-        private void SendEnvelope(Envelope envelope, object obj)
-        {
             try
             {
                 lock (SendLock)
                 {
-                    MessageSerializer.Serialize(envelope.Data, obj);
-                    EnvelopeSerializer.Serialize(TcpClient.GetStream(), envelope);
+                    WireProtocol.Serialize(TcpClient.GetStream(), obj);
                     LastCommunicationTime = DateTimeOffset.UtcNow;
                 }
             }
@@ -356,6 +261,74 @@ namespace PotatoTcp.Client
             }
         }
 
+        public virtual Task SendAsync<T>(T obj) where T : class
+        {
+            if (Disposed) throw new ObjectDisposedException("Can't call Send<T> on a disposed object.");
+            if (!IsConnected) throw new NotConnectedException("The connection has been terminated");
+
+            var source = new TaskCompletionSource<object>();
+            _outgoingMessages.Add((source, obj));
+            return source.Task;
+        }
+
+        private void HandleMessage(Stream stream)
+        {
+            LastCommunicationTime = DateTimeOffset.UtcNow;
+
+            try
+            {
+                var message = WireProtocol.Deserialize(stream);
+
+                if (Handlers.TryGetValue(message.GetType(), out IMessageHandler handler))
+                {
+                    Logger.LogDebug($"Invoking handler for message of type: {message.GetType().FullName}");
+                    handler.Invoke(message);
+                }
+                else
+                {
+                    Logger.LogDebug($"No handler found for message of type: {message.GetType().FullName ?? "unknown type"}");
+                }
+            }
+            catch (SerializationException) when (!IsConnected || !stream.CanRead || !RemoteConnectionEstablished())
+            {
+                if (IsConnected) Disconnect();
+            }
+            // catch (SerializationException se)
+            // {
+            //     Console.WriteLine($"SerializationException: {se.Message}");
+            // }
+            catch (IOException ioe) when (!IsConnected || Stopping)
+            {
+                Logger.LogTrace(ioe, $"Ignoring exception because client {Id} has disconnected.");
+            }
+            catch (Exception e)
+            {
+                Logger.LogError(e, e.Message);
+            }
+        }
+
+        private void KeepAliveEventHandler(object source, System.Timers.ElapsedEventArgs e)
+        {
+            if ((LastCommunicationTime + KeepAliveTimeSpan) > DateTimeOffset.UtcNow) return;
+
+            if (Disposed || !IsConnected)
+            {
+                KeepAliveTimer.Enabled = false;
+                return;
+            }
+
+            try
+            {
+                Send(KeepAliveMessage);
+                LastCommunicationTime = new DateTimeOffset(e.SignalTime.AddMilliseconds(e.SignalTime.Millisecond * -1));
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("Failure while sending keep alive!", ex);
+                Disconnect();
+            }
+        }
+
         private void StartAsyncSendProcessor(CancellationToken token)
         {
             Task.Run(() =>
@@ -363,12 +336,13 @@ namespace PotatoTcp.Client
                 while (!_outgoingMessages.IsCompleted)
                 {
                     token.ThrowIfCancellationRequested();
-                    (TaskCompletionSource<object> Source, Envelope Envelope, object Message) messageData = default((TaskCompletionSource<object>, Envelope, object));
+                    (TaskCompletionSource<object> Source, object Message) message = default((TaskCompletionSource<object>, object));
+
                     try
                     {
-                        messageData = _outgoingMessages.Take(token);
-                        SendEnvelope(messageData.Envelope, messageData.Message);
-                        messageData.Source.SetResult(messageData.Message);
+                        message = _outgoingMessages.Take(token);
+                        Send(message.Message);
+                        message.Source.SetResult(message.Message);
                     }
                     catch (NotConnectedException)
                     {
@@ -376,9 +350,7 @@ namespace PotatoTcp.Client
                     }
                     catch (Exception e)
                     {
-                        messageData.Source?.SetException(e);
-                        //This error should be handled by the client but if they 'fire and forget'
-                        //this should give some indication as to what is happening.
+                        message.Source?.SetException(e);
                         Logger.LogDebug(e, "Send message processing thread threw exception");
                     }
                 }

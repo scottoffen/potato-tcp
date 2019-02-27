@@ -18,98 +18,119 @@ namespace PotatoTcp.Server
         public static readonly ILogger<PotatoServer> DefaultLogger = new NullLoggerFactory().CreateLogger<PotatoServer>();
 
         public static IPAddress DefaultIpAddress { get; set; } = IPAddress.Any;
+
         public static int DefaultPortNumber { get; set; } = 23000;
 
-        protected bool Starting { get; set; }
-        protected bool Stopping { get; set; }
+        protected ExtendedTcpListener TcpListener { get; set; }
 
-        public ILogger<PotatoServer> Logger { get; protected set; }
-        protected ExtendedTcpListener TcpListener;
-        protected bool Disposed { get; private set; }
-        protected IDictionary<Guid, IPotatoClient> Clients = new ConcurrentDictionary<Guid, IPotatoClient>();
-        protected IDictionary<Type, IMessageHandler> Handlers { get; } = new ConcurrentDictionary<Type, IMessageHandler>();
-        protected IPotatoClientFactory ClientFactory { get; set; }
-        public bool IsListening => TcpListener != null && TcpListener.IsActive;
+        public IPotatoClientFactory ClientFactory { get; protected set; }
 
-        public IEnvelopeSerializer EnvelopeSerializer { get; protected set; }
+        public bool Disposed { get; private set; }
 
-        public IMessageSerializer MessageSerializer { get; protected set; }
+        public bool Starting { get; protected set; }
+
+        public bool Stopping { get; protected set; }
+
+        public readonly IDictionary<Guid, IPotatoClient> Clients = new ConcurrentDictionary<Guid, IPotatoClient>();
+
+        public readonly IDictionary<Type, IMessageHandler> Handlers = new ConcurrentDictionary<Type, IMessageHandler>();
+
+        public bool IsListening => TcpListener?.IsActive ?? false;
 
         public IPEndPoint IpEndpoint { get; set; } = new IPEndPoint(DefaultIpAddress, DefaultPortNumber);
+
+        public ILogger<PotatoServer> Logger { get; protected set; }
 
         public event ClientConnectionEvent OnClientConnect;
         public event ServerListeningEvent OnStart;
         public event ServerListeningEvent OnStop;
 
-        public PotatoServer() : this(DefaultLogger) { }
+        public PotatoServer() : this(null, new PotatoClientFactory(), DefaultLogger) { }
 
-        public PotatoServer(ILogger<PotatoServer> logger) : this(new BinaryEnvelopeSerializer(), new BinaryMessageSerializer(), logger, new PotatoClientFactory()) { }
+        public PotatoServer(IWireProtocol wireProtocol) : this(wireProtocol, new PotatoClientFactory(wireProtocol), DefaultLogger) { }
 
-        public PotatoServer(IEnvelopeSerializer envelopeSerializer) : this(envelopeSerializer, new BinaryMessageSerializer(), DefaultLogger, new PotatoClientFactory(envelopeSerializer)) { }
+        public PotatoServer(IPotatoClientFactory factory) : this(null, factory, DefaultLogger) { }
 
-        public PotatoServer(IEnvelopeSerializer envelopeSerializer, ILogger<PotatoServer> logger) : this(envelopeSerializer, new BinaryMessageSerializer(), logger, new PotatoClientFactory(envelopeSerializer)) { }
+        public PotatoServer(ILogger<PotatoServer> logger) : this(null, new PotatoClientFactory(), logger) { }
 
-        public PotatoServer(IEnvelopeSerializer envelopeSerializer, IMessageSerializer messageSerializer) : this(envelopeSerializer, messageSerializer, DefaultLogger, new PotatoClientFactory(envelopeSerializer, messageSerializer)) { }
+        public PotatoServer(IWireProtocol wireProtocol, ILogger<PotatoServer> logger) : this(wireProtocol, new PotatoClientFactory(wireProtocol), logger) { }
 
-        public PotatoServer(IEnvelopeSerializer envelopeSerializer, IPotatoClientFactory factory) : this(envelopeSerializer, new BinaryMessageSerializer(), DefaultLogger, factory) { }
-
-        public PotatoServer(IEnvelopeSerializer envelopeSerializer, IMessageSerializer messageSerializer, ILogger<PotatoServer> logger) : this(envelopeSerializer, messageSerializer, logger, new PotatoClientFactory(envelopeSerializer, messageSerializer)) { }
-
-        public PotatoServer(IEnvelopeSerializer envelopeSerializer, IPotatoClientFactory factory, ILogger<PotatoServer> logger) : this(envelopeSerializer, new BinaryMessageSerializer(), logger, factory) { }
-
-        public PotatoServer(IMessageSerializer messageSerializer) : this(new BinaryEnvelopeSerializer(), messageSerializer, DefaultLogger, new PotatoClientFactory(messageSerializer)) { }
-
-        public PotatoServer(IMessageSerializer messageSerializer, ILogger<PotatoServer> logger) : this(new BinaryEnvelopeSerializer(), messageSerializer, logger, new PotatoClientFactory(messageSerializer)) { }
-
-        public PotatoServer(IMessageSerializer messageSerializer, IPotatoClientFactory factory) : this(new BinaryEnvelopeSerializer(), messageSerializer, DefaultLogger, factory) { }
-
-        public PotatoServer(IMessageSerializer messageSerializer, IPotatoClientFactory factory, ILogger<PotatoServer> logger) : this(new BinaryEnvelopeSerializer(), messageSerializer, logger, factory) { }
-
-        public PotatoServer(IPotatoClientFactory factory) : this(new BinaryEnvelopeSerializer(), new BinaryMessageSerializer(), DefaultLogger, factory) { }
-
-        public PotatoServer(IPotatoClientFactory factory, ILogger<PotatoServer> logger) : this(new BinaryEnvelopeSerializer(), new BinaryMessageSerializer(), logger, factory) { }
-
-        public PotatoServer(IEnvelopeSerializer envelopeSerializer, IMessageSerializer messageSerializer, ILogger<PotatoServer> logger, IPotatoClientFactory clientFactory)
+        public PotatoServer(IWireProtocol protocol, IPotatoClientFactory factory, ILogger<PotatoServer> logger)
         {
-            EnvelopeSerializer = envelopeSerializer;
-            MessageSerializer = messageSerializer;
+            ClientFactory = factory;
             Logger = logger;
-            ClientFactory = clientFactory;
 
             Logger.LogTrace("PotatoTcp Server initialized.");
         }
 
-        public void Send<T>(T message)
+        public virtual void AddHandler<T>(Action<Guid, T> handler) where T : class
         {
             foreach (var client in Clients.Values)
             {
-                client.Send(message);
+                client.AddHandler<T>(handler);
             }
+
+            var handlerType = typeof(T);
+            Handlers.Add(handlerType, new MessageHandler<T>
+            {
+                HandlerType = handlerType,
+                HandlerAction = handler
+            });
         }
 
-        public Task SendAsync<T>(T message)
+        public virtual void Disconnect(Guid Id)
+        {
+            Clients[Id].Disconnect();
+            Clients.Remove(Id);
+        }
+
+        public virtual void Disconnect()
+        {
+            Parallel.ForEach(Clients.Values, client => client.Disconnect());
+            Clients.Clear();
+        }
+
+        public void Dispose()
+        {
+            if (Disposed) return;
+            Stop();
+            Disconnect();
+            Disposed = true;
+            GC.SuppressFinalize(this);
+        }
+
+        public virtual void RemoveHandler<T>()
+        {
+            Handlers.Remove(typeof(T));
+            Clients.ToList().ForEach(c => c.Value.RemoveHandler<T>());
+        }
+
+        public virtual void Send<T>(T message) where T : class
+        {
+            foreach (var client in Clients.Values) client.Send(message);
+        }
+
+        public virtual void Send<T>(Guid clientId, T message) where T : class
+        {
+            Clients[clientId]?.Send(message);
+        }
+
+        public virtual Task SendAsync<T>(T message) where T : class
         {
             return Task.WhenAll(Clients.Values.Select(client => client.SendAsync(message)));
         }
 
-        public void Send<T>(Guid clientId, T message)
+        public virtual async Task SendAsync<T>(Guid clientId, T message) where T : class
         {
-            if (!Clients.ContainsKey(clientId)) return;
-            Clients[clientId].Send(message);
+            await Clients[clientId]?.SendAsync(message);
         }
 
-        public async Task SendAsync<T>(Guid clientId, T message)
-        {
-            if (!Clients.ContainsKey(clientId)) return;
-            await Clients[clientId].SendAsync(message);
-        }
-
-        public async Task StartAsync()
+        public virtual async Task StartAsync()
         {
             await StartAsync(CancellationToken.None);
         }
 
-        public async Task StartAsync(CancellationToken token)
+        public virtual async Task StartAsync(CancellationToken token)
         {
             if (IsListening || Starting || Stopping) return;
 
@@ -125,29 +146,27 @@ namespace PotatoTcp.Server
                 while (!Stopping)
                 {
                     var client = ClientFactory.Create(await TcpListener.AcceptTcpClientAsync());
-                    Clients.Add(client.Id, client);
-                    OnClientConnect?.Invoke(client);
-
                     foreach (var handler in Handlers.Values)
                     {
                         client.AddHandler(handler);
                     }
+
+                    Clients.Add(client.Id, client);
+                    OnClientConnect?.Invoke(client);
 
                     client.ListenAsync(token);
                 }
             }
             catch (SocketException se) when (Stopping)
             {
-                /* Thrown by:
-                   - TcpListener.Start()
-                   - TcpListener.AcceptTcpClientAsync()
-
-                    Use the ErrorCode property to obtain the specific error code, then refer to:
-                    https://docs.microsoft.com/en-us/windows/desktop/winsock/windows-sockets-error-codes-2
-                 */
                 Logger.LogTrace(se, $"Ignoring exception because listener is in shutdown mode.");
             }
-            catch (ObjectDisposedException ode) when (Stopping)
+            catch (SocketException se)
+            {
+                Logger.LogTrace(se, $"SocketException.ErrorCode: {se.ErrorCode}");
+                throw;
+            }
+            catch (ObjectDisposedException ode) when (Stopping || TcpListener == null)
             {
                 Logger.LogTrace(ode, $"Ignoring exception because listener is in shutdown mode.");
             }
@@ -165,18 +184,19 @@ namespace PotatoTcp.Server
             }
         }
 
-        public void Stop()
+        public virtual void Stop()
         {
+            if (Disposed) throw new ObjectDisposedException("Can't call Stop on a disposed object.");
             if (!IsListening || Starting || Stopping) return;
-            Stopping = true;
 
             try
             {
+                Stopping = true;
+
                 TcpListener.Stop();
                 TcpListener = null;
 
-                Parallel.ForEach(Clients.Values, client => client.Disconnect());
-                Clients.Clear();
+                Stopping = false;
 
                 OnStop?.Invoke(this);
             }
@@ -188,34 +208,6 @@ namespace PotatoTcp.Server
             {
                 Stopping = false;
             }
-        }
-
-        public void AddHandler<T>(Action<Guid, T> handler) where T : class
-        {
-            foreach (var client in Clients.Values)
-            {
-                client.AddHandler<T>(handler);
-            }
-
-            var handlerType = typeof(T);
-            Handlers.Add(handlerType, new MessageHandler<T>
-            {
-                HandlerType = handlerType,
-                HandlerAction = handler
-            });
-        }
-
-        public void RemoveHandler<T>()
-        {
-            Handlers.Remove(typeof(T));
-            Clients.ToList().ForEach(c => c.Value.RemoveHandler<T>());
-        }
-
-        public void Dispose()
-        {
-            if (Disposed) return;
-            Disposed = true;
-            Stop();
         }
     }
 }

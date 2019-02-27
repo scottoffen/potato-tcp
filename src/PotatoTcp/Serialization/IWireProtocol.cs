@@ -3,10 +3,10 @@ using System.IO;
 
 namespace PotatoTcp.Serialization
 {
-    public interface IMessageSerializer
+    public interface IWireProtocol
     {
         void Serialize<T>(Stream stream, T obj);
 
-        object Deserialize(Type type, Stream stream);
+        object Deserialize(Stream stream);
     }
 }

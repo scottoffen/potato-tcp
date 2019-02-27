@@ -21,6 +21,10 @@ namespace Samples.Client
 
             using (var client = Configure())
             {
+                Console.Write("Press enter to start listening for incoming messages.");
+                Console.ReadLine();
+                client.ListenAsync();
+
                 Console.WriteLine();
                 Console.WriteLine("Enter <x> to exit the utility at any time.");
                 Console.WriteLine("Enter <l> to send a King Lear to the server.");
