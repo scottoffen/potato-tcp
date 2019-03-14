@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using PotatoTcp.Serialization;
 using System.Net.Sockets;
+using PotatoTcp.HandlerStrategies;
 
 namespace PotatoTcp.Client
 {
@@ -25,5 +25,9 @@ namespace PotatoTcp.Client
 
         public IPotatoClient Create(TcpClient client)
             => new PotatoClient(WireProtocol, Logger, client);
+
+        public IPotatoClient Create(TcpClient client, IHandlerStrategy handlerStrategy)
+            => new PotatoClient(WireProtocol, Logger, client, handlerStrategy);
+
     }
 }
