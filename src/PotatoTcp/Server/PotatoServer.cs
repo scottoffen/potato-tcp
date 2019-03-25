@@ -107,22 +107,68 @@ namespace PotatoTcp.Server
 
         public virtual void Send<T>(T message) where T : class
         {
-            foreach (var client in Clients.Values) client.Send(message);
+            foreach (var client in Clients.Values)
+            {
+                try
+                {
+                    client.Send(message);
+                }
+                catch (NotConnectedException nce)
+                {
+                    Logger.LogInformation($"Client {client.Id} is not longer connected", nce);
+                    client.Dispose();
+                    Clients.Remove(client.Id);
+                }
+                catch (ObjectDisposedException ode)
+                {
+                    Logger.LogInformation($"Client {client.Id} is not longer connected", ode);
+                    Clients.Remove(client.Id);
+                }
+            }
         }
 
         public virtual void Send<T>(Guid clientId, T message) where T : class
         {
-            Clients[clientId]?.Send(message);
+            try
+            {
+                Clients[clientId]?.Send(message);
+            }
+            catch (NotConnectedException nce)
+            {
+                Logger.LogInformation($"Client {clientId} is not longer connected", nce);
+                Clients[clientId]?.Dispose();
+                Clients.Remove(clientId);
+            }
+            catch (ObjectDisposedException ode)
+            {
+                Logger.LogInformation($"Client {clientId} is not longer connected", ode);
+                Clients.Remove(clientId);
+            }
         }
 
         public virtual Task SendAsync<T>(T message) where T : class
         {
+            //TODO: Harden this for disconnected clients
             return Task.WhenAll(Clients.Values.Select(client => client.SendAsync(message)));
         }
 
         public virtual async Task SendAsync<T>(Guid clientId, T message) where T : class
         {
-            await Clients[clientId]?.SendAsync(message);
+            try
+            {
+                await Clients[clientId]?.SendAsync(message);
+            }
+            catch (NotConnectedException nce)
+            {
+                Logger.LogInformation($"Client {clientId} is not longer connected.", nce);
+                Clients[clientId]?.Dispose();
+                Clients.Remove(clientId);
+            }
+            catch (ObjectDisposedException ode)
+            {
+                Logger.LogInformation($"Client {clientId} has been disposed.", ode);
+                Clients.Remove(clientId);
+            }
         }
 
         public virtual async Task StartAsync()

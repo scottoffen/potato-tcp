@@ -4,6 +4,7 @@ using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using PotatoTcp.Client;
 
 namespace PotatoTcp.Serialization
 {
@@ -30,11 +31,11 @@ namespace PotatoTcp.Serialization
             var messageLength = ReadMessageLength(stream);
 
             if (messageLength == 0)
-                throw new InvalidOperationException("Received message of length 0.");
+                throw new NotConnectedException("Received message of length 0.");
 
             using (var dataStream = new MemoryStream(messageLength))
             {
-                CopyStream(stream, dataStream, messageLength).GetAwaiter().GetResult();
+                CopyStreamAsync(stream, dataStream, messageLength).GetAwaiter().GetResult();
                 dataStream.Seek(0, SeekOrigin.Begin);
                 return _serializer.Deserialize(dataStream);
             }
@@ -46,7 +47,7 @@ namespace PotatoTcp.Serialization
             return (stream.Read(bytes, 0, sizeof(int)) > 0) ? BitConverter.ToInt32(bytes, 0) : 0;
         }
 
-        private async Task CopyStream(Stream sourceStream, Stream destStream, int size)
+        private async Task CopyStreamAsync(Stream sourceStream, Stream destStream, int size)
         {
             int sizeRead = 0;
             int bufferSize = Math.Min(size, 4096);
