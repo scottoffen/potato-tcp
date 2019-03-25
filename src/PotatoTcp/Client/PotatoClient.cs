@@ -232,9 +232,9 @@ namespace PotatoTcp.Client
             return info != null && info.State == TcpState.Established;
         }
 
-        public virtual void RemoveHandler<T>()
+        public virtual bool TryRemoveHandler<T>()
         {
-            _messageHandlerStrategy.RemoveHandlers<T>();
+            return _messageHandlerStrategy.TryRemoveHandlers<T>();
         }
 
         public virtual void Send<T>(T obj) where T : class

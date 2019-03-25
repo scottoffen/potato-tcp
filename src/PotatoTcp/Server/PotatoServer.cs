@@ -91,9 +91,9 @@ namespace PotatoTcp.Server
             GC.SuppressFinalize(this);
         }
 
-        public virtual void RemoveHandler<T>()
+        public virtual bool TryRemoveHandler<T>()
         {
-            _messageHandlerStrategy.RemoveHandlers<T>();
+            return _messageHandlerStrategy.TryRemoveHandlers<T>();
         }
 
         public virtual void Send<T>(T message) where T : class

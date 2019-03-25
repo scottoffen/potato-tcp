@@ -5,89 +5,123 @@ using System.Linq;
 
 namespace PotatoTcp.HandlerStrategies
 {
+
+    /// <summary>
+    /// Registers handler to its type and all base types.
+    /// </summary>
     public class DerivedTypeHandlerStrategy : IHandlerStrategy
     {
-        private readonly ConcurrentDictionary<Type, List<IMessageHandler>> _handlers = new ConcurrentDictionary<Type, List<IMessageHandler>>();
-        private readonly ConcurrentDictionary<Type, List<Type>> _alternateTypes = new ConcurrentDictionary<Type, List<Type>>();
-
-        public IDictionary<Type, List<IMessageHandler>> Handlers => _handlers;
+        private readonly ConcurrentDictionary<Type, List<IMessageHandler>> _handlers = 
+            new ConcurrentDictionary<Type, List<IMessageHandler>>();
 
         public void AddHandler<T>(Action<Guid, T> handler)
         {
             var handlerType = typeof(T);
             var messageHandler = new MessageHandler<T>
             {
+                HandlerGroupId = Guid.NewGuid(),
                 HandlerType = handlerType,
                 HandlerAction = handler
             };
 
+            AddHandlerInternal(handlerType, messageHandler);
+        }
+
+        public bool TryRemoveHandlers<T>()
+        {
+            var handlerType = typeof(T);
+            if (_handlers.TryRemove(handlerType, out List<IMessageHandler> handlers))
+            {
+                var groupIds = handlers.Select(x => x.HandlerGroupId);
+                var allBasesRemoved = true;
+                foreach (var baseType in GetBaseTypes(handlerType))
+                {
+                    if (_handlers.TryGetValue(baseType, out List<IMessageHandler> baseHandlers))
+                    {
+                        baseHandlers.RemoveAll(x => groupIds.Contains(x.HandlerGroupId));
+
+                        if (!baseHandlers.Any())
+                        {
+                            if (!_handlers.TryRemove(baseType, out _))
+                            {
+                                allBasesRemoved = false;
+                            }
+                        }
+                    }
+                }
+                return allBasesRemoved;
+            }
+            return false;
+        }
+
+        public void AddHandler(IMessageHandler handler)
+        {
+            AddHandlerInternal(handler.HandlerType, handler);
+        }
+
+        public bool InvokeHandler(object message)
+        {
+            if (_handlers.TryGetValue(message.GetType(), out List<IMessageHandler> handlers))
+            {
+                handlers.ForEach(handler => handler.Invoke(message));
+                return true;
+            }
+            return false;
+        }
+
+        public bool TryRemoveHandler<T>(Guid clientId)
+        {
+            var handlerType = typeof(T);
+            if (_handlers.TryGetValue(handlerType, out List<IMessageHandler> handlers))
+            {
+                var removedHandlers = handlers.RemoveAll(x => x.ClientId == clientId);
+                if (!handlers.Any())
+                {
+                    _handlers.TryRemove(handlerType, out _);
+                }
+
+                foreach (var baseType in GetBaseTypes(handlerType))
+                {
+                    if (_handlers.TryGetValue(baseType, out List<IMessageHandler> baseHandlers))
+                    {
+                        removedHandlers += baseHandlers.RemoveAll(x => x.ClientId == clientId);
+                        if (!baseHandlers.Any())
+                        {
+                            if (_handlers.TryRemove(baseType, out _))
+                            {
+                                removedHandlers++;
+                            }
+                        }
+                    }
+                }
+
+                return removedHandlers > 0;
+            }
+            return false;
+        }
+
+        private void AddHandlerInternal(Type handlerType, IMessageHandler messageHandler)
+        {
             _handlers.AddOrUpdate(
                 handlerType,
-                new List<IMessageHandler> {messageHandler},
+                new List<IMessageHandler> { messageHandler },
                 (type, handlers) =>
                 {
                     handlers.Add(messageHandler);
                     return handlers;
                 });
-        }
 
-        public void AddHandler(IMessageHandler handler)
-        {
-            _handlers.AddOrUpdate(
-                handler.HandlerType,
-                new List<IMessageHandler> {handler},
-                (type, handlers) =>
-                {
-                    handlers.Add(handler);
-                    return handlers;
-                });
-        }
-
-        public void RemoveHandlers<T>()
-        {
-            Handlers.Remove(typeof(T));
-        }
-
-        public void RemoveHandler<T>(Guid clientId)
-        {
-            if (_handlers.TryGetValue(typeof(T), out List<IMessageHandler> handlers))
+            foreach (var baseType in GetBaseTypes(handlerType))
             {
-                handlers.RemoveAll(x => x.ClientId == clientId);
-            }
-        }
-
-        /// <summary>
-        /// The message
-        /// </summary>
-        /// <param name="message"></param>
-        /// <returns>True if any handler was found, otherwise false</returns>
-        public bool InvokeHandler(object message)
-        {
-            var messageType = GetType();
-            if (_handlers.TryGetValue(messageType, out List<IMessageHandler> handlers))
-            {
-                handlers.ForEach(handler => handler.Invoke(message));
-                return true;
-            }
-
-            if (_alternateTypes.TryGetValue(messageType, out List<Type> baseTypes))
-            {
-                var handlerFound = false;
-                foreach (var baseType in baseTypes)
-                {
-                    if (_handlers.TryGetValue(baseType, out List<IMessageHandler> baseHandlers))
+                _handlers.AddOrUpdate(
+                    baseType,
+                    new List<IMessageHandler> { messageHandler },
+                    (type, handlers) =>
                     {
-                        handlerFound = true;
-                        baseHandlers.ForEach(handler => handler.Invoke(message));
-                    }
-                }
-
-                return handlerFound;
+                        handlers.Add(messageHandler);
+                        return handlers;
+                    });
             }
-
-            var msgBaseTypes = GetBaseTypes(messageType).Union(_handlers.Keys);
-            _alternateTypes.AddOrUpdate(messageType, msgBaseTypes.ToList(), (_, types) => types);
-            return InvokeHandler(message);
         }
 
         private IEnumerable<Type> GetBaseTypes(Type handlerType)

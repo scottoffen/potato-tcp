@@ -1,10 +1,14 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace PotatoTcp.HandlerStrategies
 {
-    public class DefaultHandlerStrategy : IHandlerStrategy
+    /// <summary>
+    /// Registers handlers to the passed in type.
+    /// </summary>
+    public class SimpleTypeHandlerStrategy : IHandlerStrategy
     {
         private readonly ConcurrentDictionary<Type, List<IMessageHandler>> _handlers = new ConcurrentDictionary<Type, List<IMessageHandler>>();
         public IDictionary<Type, List<IMessageHandler>> Handlers => _handlers;
@@ -40,17 +44,20 @@ namespace PotatoTcp.HandlerStrategies
                 });
         }
 
-        public void RemoveHandlers<T>()
+        public bool TryRemoveHandlers<T>()
         {
-            Handlers.Remove(typeof(T));
+            return Handlers.Remove(typeof(T));
         }
 
-        public void RemoveHandler<T>(Guid clientId)
+        public bool TryRemoveHandler<T>(Guid clientId)
         {
-            if (_handlers.TryGetValue(typeof(T), out List<IMessageHandler> handlers))
+            var handlerType = typeof(T);
+            if (_handlers.TryGetValue(handlerType, out List<IMessageHandler> handlers))
             {
                 handlers.RemoveAll(x => x.ClientId == clientId);
+                return handlers.Any() || _handlers.TryRemove(handlerType, out _);
             }
+            return false;
         }
 
         /// <summary>

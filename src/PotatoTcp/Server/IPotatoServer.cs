@@ -58,7 +58,7 @@ namespace PotatoTcp.Server
 
         void Disconnect();
 
-        void RemoveHandler<T>();
+        bool TryRemoveHandler<T>();
         /// <summary>
         /// 
         /// </summary>

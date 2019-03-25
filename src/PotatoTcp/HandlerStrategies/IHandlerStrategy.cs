@@ -5,7 +5,6 @@ namespace PotatoTcp.HandlerStrategies
     public interface IHandlerStrategy
     {
         void AddHandler<T>(Action<Guid, T> handler);
-        void RemoveHandlers<T>();
         void AddHandler(IMessageHandler handler);
 
         /// <summary>
@@ -15,6 +14,8 @@ namespace PotatoTcp.HandlerStrategies
         /// <returns>True if any handler was found, otherwise false</returns>
         bool InvokeHandler(object message);
 
-        void RemoveHandler<T>(Guid clientId);
+        bool TryRemoveHandlers<T>();
+
+        bool TryRemoveHandler<T>(Guid clientId);
     }
 }
