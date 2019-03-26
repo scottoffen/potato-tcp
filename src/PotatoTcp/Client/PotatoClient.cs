@@ -293,10 +293,10 @@ namespace PotatoTcp.Client
             {
                 if (IsConnected) Disconnect();
             }
-            // catch (SerializationException se)
-            // {
-            //     Console.WriteLine($"SerializationException: {se.Message}");
-            // }
+            catch (NotConnectedException)
+            {
+                if (IsConnected) Disconnect();
+            }
             catch (IOException ioe) when (!IsConnected || Stopping)
             {
                 Logger.LogTrace(ioe, $"Ignoring exception because client {Id} has disconnected.");

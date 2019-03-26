@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NLog.Extensions.Logging;
 using PotatoTcp.Client;
+using PotatoTcp.Serialization;
 using PotatoTcp.Server;
 using Samples.Objects;
 
@@ -104,9 +105,11 @@ namespace Samples.Server
                         CaptureMessageProperties = true
                     });
                 })
-                // Injecting this allows for a logger to be injected into generated clients
-                .AddScoped<IPotatoClientFactory, PotatoClientFactory>()
-                .AddScoped<IPotatoServer, PotatoServer>()
+                // You can inject your own wire protocol
+                .AddSingleton<IWireProtocol, LengthPrefixedWireProtocol>()
+                // Injecting the default factory allows for a logger to be injected into generated clients
+                .AddSingleton<IPotatoClientFactory, PotatoClientFactory>()
+                .AddSingleton<IPotatoServer, PotatoServer>()
                 .BuildServiceProvider();
         }
 
