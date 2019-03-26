@@ -27,6 +27,21 @@ namespace PotatoTcp.HandlerStrategies
             AddHandlerInternal(handlerType, messageHandler);
         }
 
+        public void AddHandler(IMessageHandler handler)
+        {
+            AddHandlerInternal(handler.HandlerType, handler);
+        }
+
+        public bool InvokeHandler(object message)
+        {
+            if (_handlers.TryGetValue(message.GetType(), out List<IMessageHandler> handlers))
+            {
+                handlers.ForEach(handler => handler.Invoke(message));
+                return true;
+            }
+            return false;
+        }
+
         public bool TryRemoveHandlers<T>()
         {
             var handlerType = typeof(T);
@@ -50,21 +65,6 @@ namespace PotatoTcp.HandlerStrategies
                     }
                 }
                 return allBasesRemoved;
-            }
-            return false;
-        }
-
-        public void AddHandler(IMessageHandler handler)
-        {
-            AddHandlerInternal(handler.HandlerType, handler);
-        }
-
-        public bool InvokeHandler(object message)
-        {
-            if (_handlers.TryGetValue(message.GetType(), out List<IMessageHandler> handlers))
-            {
-                handlers.ForEach(handler => handler.Invoke(message));
-                return true;
             }
             return false;
         }
