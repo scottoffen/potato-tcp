@@ -10,6 +10,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using PotatoTcp.HandlerStrategies;
 
 namespace PotatoTcp.Server
 {
@@ -33,8 +34,6 @@ namespace PotatoTcp.Server
 
         public readonly IDictionary<Guid, IPotatoClient> Clients = new ConcurrentDictionary<Guid, IPotatoClient>();
 
-        public readonly IDictionary<Type, IMessageHandler> Handlers = new ConcurrentDictionary<Type, IMessageHandler>();
-
         public bool IsListening => TcpListener?.IsActive ?? false;
 
         public IPEndPoint IpEndpoint { get; set; } = new IPEndPoint(DefaultIpAddress, DefaultPortNumber);
@@ -45,37 +44,30 @@ namespace PotatoTcp.Server
         public event ServerListeningEvent OnStart;
         public event ServerListeningEvent OnStop;
 
-        public PotatoServer() : this(null, new PotatoClientFactory(), DefaultLogger) { }
+        private readonly IHandlerStrategy _messageHandlerStrategy;
 
-        public PotatoServer(IWireProtocol wireProtocol) : this(wireProtocol, new PotatoClientFactory(wireProtocol), DefaultLogger) { }
+        public PotatoServer() : this(null, new PotatoClientFactory(), DefaultLogger, new DerivedTypeHandlerStrategy()) { }
 
-        public PotatoServer(IPotatoClientFactory factory) : this(null, factory, DefaultLogger) { }
+        public PotatoServer(IWireProtocol wireProtocol) : this(wireProtocol, new PotatoClientFactory(wireProtocol), DefaultLogger, new DerivedTypeHandlerStrategy()) { }
 
-        public PotatoServer(ILogger<PotatoServer> logger) : this(null, new PotatoClientFactory(), logger) { }
+        public PotatoServer(IPotatoClientFactory factory) : this(null, factory, DefaultLogger, new DerivedTypeHandlerStrategy()) { }
 
-        public PotatoServer(IWireProtocol wireProtocol, ILogger<PotatoServer> logger) : this(wireProtocol, new PotatoClientFactory(wireProtocol), logger) { }
+        public PotatoServer(ILogger<PotatoServer> logger) : this(null, new PotatoClientFactory(), logger, new DerivedTypeHandlerStrategy()) { }
 
-        public PotatoServer(IWireProtocol protocol, IPotatoClientFactory factory, ILogger<PotatoServer> logger)
+        public PotatoServer(IWireProtocol wireProtocol, ILogger<PotatoServer> logger) : this(wireProtocol, new PotatoClientFactory(wireProtocol), logger, new DerivedTypeHandlerStrategy()) { }
+
+        public PotatoServer(IWireProtocol protocol, IPotatoClientFactory factory, ILogger<PotatoServer> logger, IHandlerStrategy handlerStrategy)
         {
             ClientFactory = factory;
             Logger = logger;
+            _messageHandlerStrategy = handlerStrategy;
 
             Logger.LogTrace("PotatoTcp Server initialized.");
         }
 
         public virtual void AddHandler<T>(Action<Guid, T> handler) where T : class
         {
-            foreach (var client in Clients.Values)
-            {
-                client.AddHandler<T>(handler);
-            }
-
-            var handlerType = typeof(T);
-            Handlers.Add(handlerType, new MessageHandler<T>
-            {
-                HandlerType = handlerType,
-                HandlerAction = handler
-            });
+            _messageHandlerStrategy.AddHandler(handler);
         }
 
         public virtual void Disconnect(Guid Id)
@@ -99,10 +91,9 @@ namespace PotatoTcp.Server
             GC.SuppressFinalize(this);
         }
 
-        public virtual void RemoveHandler<T>()
+        public virtual bool TryRemoveHandler<T>()
         {
-            Handlers.Remove(typeof(T));
-            Clients.ToList().ForEach(c => c.Value.RemoveHandler<T>());
+            return _messageHandlerStrategy.TryRemoveHandlers<T>();
         }
 
         public virtual void Send<T>(T message) where T : class
@@ -145,11 +136,7 @@ namespace PotatoTcp.Server
 
                 while (!Stopping)
                 {
-                    var client = ClientFactory.Create(await TcpListener.AcceptTcpClientAsync());
-                    foreach (var handler in Handlers.Values)
-                    {
-                        client.AddHandler(handler);
-                    }
+                    var client = ClientFactory.Create(await TcpListener.AcceptTcpClientAsync(), _messageHandlerStrategy);
 
                     Clients.Add(client.Id, client);
                     OnClientConnect?.Invoke(client);

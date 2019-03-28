@@ -119,7 +119,7 @@ namespace PotatoTcp.Client
         /// 
         /// </summary>
         /// <typeparam name="T"></typeparam>
-        void RemoveHandler<T>();
+        bool TryRemoveHandler<T>();
 
         /// <summary>
         /// 

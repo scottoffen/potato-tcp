@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using PotatoTcp.Serialization;
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -12,6 +11,7 @@ using System.Net.Sockets;
 using System.Runtime.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using PotatoTcp.HandlerStrategies;
 using Timer = System.Timers.Timer;
 
 namespace PotatoTcp.Client
@@ -23,13 +23,12 @@ namespace PotatoTcp.Client
         public object KeepAliveMessage { get; set; }
 
         private bool _enableKeepAlive;
+        private readonly IHandlerStrategy _messageHandlerStrategy;
         private readonly BlockingCollection<(TaskCompletionSource<object>, object)> _outgoingMessages = new BlockingCollection<(TaskCompletionSource<object>, object)>();
 
         protected readonly object SendLock = new object();
 
         protected TcpClient TcpClient { get; set; }
-
-        public IDictionary<Type, IMessageHandler> Handlers { get; } = new ConcurrentDictionary<Type, IMessageHandler>();
 
         public bool Disposed { get; private set; }
 
@@ -82,23 +81,31 @@ namespace PotatoTcp.Client
         public event ClientConnectionEvent OnConnect;
         public event ClientConnectionEvent OnDisconnect;
 
-        public PotatoClient() : this(new BinaryFormatterWireProtocol(), DefaultLogger) { }
+        public PotatoClient() : this(new BinaryFormatterWireProtocol(), DefaultLogger, new DerivedTypeHandlerStrategy()) { }
 
-        public PotatoClient(IWireProtocol protocol) : this(protocol, DefaultLogger) { }
+        public PotatoClient(IWireProtocol protocol) : this(protocol, DefaultLogger, new DerivedTypeHandlerStrategy()) { }
 
-        public PotatoClient(ILogger<PotatoClient> logger) : this(new BinaryFormatterWireProtocol(), logger) { }
+        public PotatoClient(ILogger<PotatoClient> logger) : this(new BinaryFormatterWireProtocol(), logger, new DerivedTypeHandlerStrategy()) { }
 
-        protected internal PotatoClient(IWireProtocol protocol, ILogger<PotatoClient> logger, TcpClient client) : this(protocol, logger)
+        protected internal PotatoClient(IWireProtocol protocol, ILogger<PotatoClient> logger, TcpClient client) : this(protocol, logger, new DerivedTypeHandlerStrategy())
         {
             TcpClient = client;
             HostName = null;
             Port = 0;
         }
 
-        public PotatoClient(IWireProtocol protocol, ILogger<PotatoClient> logger)
+        protected internal PotatoClient(IWireProtocol protocol, ILogger<PotatoClient> logger, TcpClient client, IHandlerStrategy handlerStrategy) : this(protocol, logger, handlerStrategy)
+        {
+            TcpClient = client;
+            HostName = null;
+            Port = 0;
+        }
+
+        public PotatoClient(IWireProtocol protocol, ILogger<PotatoClient> logger, IHandlerStrategy handlerStrategy)
         {
             WireProtocol = protocol;
             Logger = logger;
+            _messageHandlerStrategy = handlerStrategy;
 
             KeepAliveTimer = new Timer(KeepAliveTimeSpan.TotalMilliseconds) { AutoReset = true };
             KeepAliveTimer.Elapsed += KeepAliveEventHandler;
@@ -109,19 +116,12 @@ namespace PotatoTcp.Client
 
         public virtual void AddHandler<T>(Action<Guid, T> handler)
         {
-            var handlerType = typeof(T);
-            Handlers.Add(handlerType, new MessageHandler<T>
-            {
-                HandlerType = handlerType,
-                HandlerAction = handler
-            });
+            _messageHandlerStrategy.AddHandler(handler);
         }
 
         public virtual void AddHandler(IMessageHandler handler)
         {
-            Handlers.Add(
-                handler.HandlerType,
-                handler.MakeClientSpecificCopy(Id));
+            _messageHandlerStrategy.AddHandler(handler.MakeClientSpecificCopy(Id));
         }
 
         public virtual async Task ConnectAsync()
@@ -232,9 +232,9 @@ namespace PotatoTcp.Client
             return info != null && info.State == TcpState.Established;
         }
 
-        public virtual void RemoveHandler<T>()
+        public virtual bool TryRemoveHandler<T>()
         {
-            Handlers.Remove(typeof(T));
+            return _messageHandlerStrategy.TryRemoveHandlers<T>();
         }
 
         public virtual void Send<T>(T obj) where T : class
@@ -279,24 +279,14 @@ namespace PotatoTcp.Client
             {
                 var message = WireProtocol.Deserialize(stream);
 
-                if (Handlers.TryGetValue(message.GetType(), out IMessageHandler handler))
-                {
-                    Logger.LogDebug($"Invoking handler for message of type: {message.GetType().FullName}");
-                    handler.Invoke(message);
-                }
-                else
-                {
-                    Logger.LogDebug($"No handler found for message of type: {message.GetType().FullName ?? "unknown type"}");
-                }
+                Logger.LogDebug(_messageHandlerStrategy.InvokeHandler(message)
+                    ? $"Invoked handler for message of type: {message.GetType().FullName}"
+                    : $"No handler found for message of type: {message.GetType().FullName ?? "unknown type"}");
             }
             catch (SerializationException) when (!IsConnected || !stream.CanRead || !RemoteConnectionEstablished())
             {
                 if (IsConnected) Disconnect();
             }
-            // catch (SerializationException se)
-            // {
-            //     Console.WriteLine($"SerializationException: {se.Message}");
-            // }
             catch (IOException ioe) when (!IsConnected || Stopping)
             {
                 Logger.LogTrace(ioe, $"Ignoring exception because client {Id} has disconnected.");
