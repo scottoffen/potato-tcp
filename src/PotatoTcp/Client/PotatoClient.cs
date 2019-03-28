@@ -280,7 +280,7 @@ namespace PotatoTcp.Client
                 var message = WireProtocol.Deserialize(stream);
 
                 Logger.LogDebug(_messageHandlerStrategy.InvokeHandler(message)
-                    ? $"Invoking handler for message of type: {message.GetType().FullName}"
+                    ? $"Invoked handler for message of type: {message.GetType().FullName}"
                     : $"No handler found for message of type: {message.GetType().FullName ?? "unknown type"}");
             }
             catch (SerializationException) when (!IsConnected || !stream.CanRead || !RemoteConnectionEstablished())

@@ -22,14 +22,7 @@ namespace PotatoTcp.HandlerStrategies
                 HandlerAction = handler
             };
 
-            _handlers.AddOrUpdate(
-                handlerType,
-                new List<IMessageHandler> {messageHandler},
-                (type, handlers) =>
-                {
-                    handlers.Add(messageHandler);
-                    return handlers;
-                });
+            AddHandler(messageHandler);
         }
 
         public void AddHandler(IMessageHandler handler)

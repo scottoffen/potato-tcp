@@ -14,6 +14,8 @@ namespace PotatoTcp.HandlerStrategies
         private readonly ConcurrentDictionary<Type, List<IMessageHandler>> _handlers = 
             new ConcurrentDictionary<Type, List<IMessageHandler>>();
 
+        public IDictionary<Type, List<IMessageHandler>> Handlers => _handlers;
+
         public void AddHandler<T>(Action<Guid, T> handler)
         {
             var handlerType = typeof(T);
@@ -29,6 +31,10 @@ namespace PotatoTcp.HandlerStrategies
 
         public void AddHandler(IMessageHandler handler)
         {
+            if (handler.HandlerGroupId == Guid.Empty)
+            {
+                handler.HandlerGroupId = Guid.NewGuid();
+            }
             AddHandlerInternal(handler.HandlerType, handler);
         }
 
@@ -49,7 +55,7 @@ namespace PotatoTcp.HandlerStrategies
             {
                 var groupIds = handlers.Select(x => x.HandlerGroupId);
                 var allBasesRemoved = true;
-                foreach (var baseType in GetBaseTypes(handlerType))
+                foreach (var baseType in handlerType.GetBaseTypes())
                 {
                     if (_handlers.TryGetValue(baseType, out List<IMessageHandler> baseHandlers))
                     {
@@ -80,7 +86,7 @@ namespace PotatoTcp.HandlerStrategies
                     _handlers.TryRemove(handlerType, out _);
                 }
 
-                foreach (var baseType in GetBaseTypes(handlerType))
+                foreach (var baseType in handlerType.GetBaseTypes())
                 {
                     if (_handlers.TryGetValue(baseType, out List<IMessageHandler> baseHandlers))
                     {
@@ -111,7 +117,7 @@ namespace PotatoTcp.HandlerStrategies
                     return handlers;
                 });
 
-            foreach (var baseType in GetBaseTypes(handlerType))
+            foreach (var baseType in handlerType.GetBaseTypes())
             {
                 _handlers.AddOrUpdate(
                     baseType,
@@ -121,17 +127,6 @@ namespace PotatoTcp.HandlerStrategies
                         handlers.Add(messageHandler);
                         return handlers;
                     });
-            }
-        }
-
-        private IEnumerable<Type> GetBaseTypes(Type handlerType)
-        {
-            var objType = typeof(object);
-            var baseType = handlerType.BaseType;
-            while (baseType != null && baseType != objType)
-            {
-                yield return baseType;
-                baseType = baseType.BaseType;
             }
         }
     }

@@ -10,6 +10,8 @@ namespace PotatoTcp.HandlerStrategies
         private readonly ConcurrentDictionary<Type, Type> _handlerTypes = new ConcurrentDictionary<Type, Type>();
         private readonly ConcurrentDictionary<Type, List<IMessageHandler>> _handlers = new ConcurrentDictionary<Type, List<IMessageHandler>>();
 
+        public IDictionary<Type, List<IMessageHandler>> Handlers => _handlers;
+
         public void AddHandler<T>(Action<Guid, T> handler)
         {
             var handlerType = typeof(T);
@@ -19,14 +21,7 @@ namespace PotatoTcp.HandlerStrategies
                 HandlerAction = handler
             };
 
-            _handlers.AddOrUpdate(
-                handlerType,
-                new List<IMessageHandler> {messageHandler},
-                (type, handlers) =>
-                {
-                    handlers.Add(messageHandler);
-                    return handlers;
-                });
+            AddHandler(messageHandler);
         }
 
         public void AddHandler(IMessageHandler handler)
@@ -49,13 +44,12 @@ namespace PotatoTcp.HandlerStrategies
 
             if (_handlerTypes.TryGetValue(messageType, out Type baseHandlerType))
             {
-                if (TryInvokeHandler(baseHandlerType, message)) return true;
-
-                var firstBaseType = GetBaseTypes(messageType).FirstOrDefault(x => _handlers.TryGetValue(x, out _));
-                _handlerTypes.AddOrUpdate(messageType, _ => firstBaseType, (_, __) => firstBaseType);
-                return TryInvokeHandler(firstBaseType, message);
+                return TryInvokeHandler(baseHandlerType, message);
             }
-            return false;
+
+            var firstBaseType = messageType.GetBaseTypes().FirstOrDefault(x => _handlers.TryGetValue(x, out _));
+            _handlerTypes.AddOrUpdate(messageType, _ => firstBaseType, (_, __) => firstBaseType);
+            return TryInvokeHandler(firstBaseType, message);
         }
 
         public bool TryRemoveHandlers<T>()
@@ -92,17 +86,6 @@ namespace PotatoTcp.HandlerStrategies
                 return handlers.Any() || _handlers.TryRemove(handlerType, out _);
             }
             return false;
-        }
-
-        private IEnumerable<Type> GetBaseTypes(Type handlerType)
-        {
-            var objType = typeof(object);
-            var baseType = handlerType.BaseType;
-            while (baseType != null && baseType != objType)
-            {
-                yield return baseType;
-                baseType = baseType.BaseType;
-            }
         }
 
         private bool TryInvokeHandler(Type messageType, object message)
