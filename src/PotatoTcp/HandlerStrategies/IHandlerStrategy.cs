@@ -1,10 +1,12 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace PotatoTcp.HandlerStrategies
 {
     public interface IHandlerStrategy
     {
         void AddHandler<T>(Action<Guid, T> handler);
+
         void AddHandler(IMessageHandler handler);
 
         /// <summary>
@@ -16,6 +18,8 @@ namespace PotatoTcp.HandlerStrategies
 
         bool TryRemoveHandlers<T>();
 
-        bool TryRemoveHandler<T>(Guid clientId);
+        bool TryRemoveHandlersByClient<T>(Guid clientId);
+
+        bool TryRemoveHandlersByGroup<T>(IEnumerable<Guid> groupIds);
     }
 }
